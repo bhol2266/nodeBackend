@@ -12,6 +12,7 @@ const { checkUserExists_DB, matchOTP_DB, saveOTP_DB, saveUser_DB, updateOTP_DB, 
 // 404- Not Found
 // 400 - Error
 // 500 - Network Error
+// 500 - Network Error
 
 
 
