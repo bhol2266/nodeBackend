@@ -12,4 +12,3 @@ module.exports = model;
 
 
 
-// 5184000

@@ -1,23 +1,79 @@
 const express = require("express");
-const router = express.Router()
-const passport = require("passport");
+
 const bcrypt = require("bcryptjs");
 const jwt = require('jsonwebtoken');
-const User = require('./../models/user');
-const RefreshTokenSchema = require('./../models/refreshTokensDB')
 const accessTokenExpiry = '300s'
 const CLIENT_URL = 'http://localhost:3000/'
-const UserOTPVerification = require('./../models/userOTPVerification')
 const nodemailer = require('nodemailer');
+const { checkUserExists_DB, matchOTP_DB, saveOTP_DB, saveUser_DB, updateOTP_DB, updateUser_DB, deleteOTP_DB, update_refreshToken_DB } = require('../db_query/userQuery')
 
 
-router.post("/login", async (req, res) => {
+// 200 - Success
+// 404- Not Found
+// 400 - Error
+// 500 - Network Error
+
+
+
+exports.register = async (req, res) => {
+    const { name, email, password } = req.body
+
+    console.log(await checkUserExists_DB(email), 'NEXT');
+    if (checkUserExists_DB(email)) {
+        res.status(400).send({ sucess: false, message: 'Already Resgistered' })
+        return
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashpass = await bcrypt.hash(password, salt)
+
+    await saveUser_DB(name, email, hashpass, false)
+    const sendOTPforVerification = async (email) => {
+        let transporter = nodemailer.createTransport({
+            host: "smtp.gmail.com",
+            port: 587,
+            secure: true,
+            service: 'Gmail',
+
+            auth: {
+                user: 'ukdevelopers007@gmail.com',
+                pass: 'mgwazngquiafczws',
+            }
+
+        });
+
+        var otp = Math.floor(1000 + Math.random() * 9000);
+        otp = parseInt(otp);
+
+        var mailOptions = {
+            to: email,
+            subject: "Otp for registration is: ",
+            html: "<h3>OTP for account verification is </h3>" + "<h1 style='font-weight:bold;'>" + otp + "</h1>" // html body
+        };
+
+        transporter.sendMail(mailOptions, async (error, info) => {
+            if (error) {
+                return res.status(200).send({ sucess: false, message: error })
+            }
+            console.log(info);
+
+            await saveOTP_DB(email, otp)
+            return res.status(200).send({ sucess: true, email: email, name: name, message: 'OTP Sent' })
+
+        });
+    }
+
+
+    sendOTPforVerification(email)
+}
+
+
+exports.login = async (req, res) => {
     const { email, password } = req.body
 
     try {
-
         //User not found
-        const userExist = await User.findOne({ email: email })
+        const userExist = await checkUserExists_DB(email)
         if (!userExist) {
             return res.status(401).send({ sucess: false, message: 'User not found' })
         }
@@ -60,11 +116,7 @@ router.post("/login", async (req, res) => {
                         return res.status(200).send({ sucess: false, message: error })
                     }
 
-                    var newOTP = { $set: { otp: otp } };
-                    var query = { 'email': email };
-
-
-                    await UserOTPVerification.updateOne(query, newOTP, { upsert: true })
+                    await updateOTP_DB(email, otp)
 
                 });
             }
@@ -83,85 +135,24 @@ router.post("/login", async (req, res) => {
         const refreshToken = jwt.sign(payload, process.env.REFRESHTOKEN_SECRET_CODE, { expiresIn: '100d' })
 
 
+
         //Saving Refresh token into Mongodb database
-        var newRefreshtoken = { $set: { refreshToken: refreshToken } };
         var query = { 'email': email };
-        await RefreshTokenSchema.updateOne(query, newRefreshtoken, { upsert: true })
+        var update = { $set: { refreshToken: refreshToken } };
+        await update_refreshToken_DB(query, update)
 
 
         res.status(200).send({ sucess: true, accountType: "credentials", email: email, accessToken: "Bearer " + accessToken, refreshToken: refreshToken, message: 'Logged In' })
     } catch (error) {
         console.log(error);
     }
-
-});
-
-
-router.post('/register', async (req, res) => {
-
-    const { name, email, password } = req.body
-
-    const userExist = await User.findOne({ email: email })
-    if (userExist) {
-        res.status(400).send({ sucess: false, message: 'Already Resgistered' })
-        return
-    }
-
-    const salt = await bcrypt.genSalt(10);
-    const hashpass = await bcrypt.hash(password, salt)
-    const user = new User({ name: name, email: email, password: hashpass })
-    await user.save()
-
-    const sendOTPforVerification = async (email) => {
-
-        let transporter = nodemailer.createTransport({
-            host: "smtp.gmail.com",
-            port: 587,
-            secure: true,
-            service: 'Gmail',
-
-            auth: {
-                user: 'ukdevelopers007@gmail.com',
-                pass: 'mgwazngquiafczws',
-            }
-
-        });
-
-        var otp = Math.floor(1000 + Math.random() * 9000);
-        otp = parseInt(otp);
-
-        var mailOptions = {
-            to: email,
-            subject: "Otp for registration is: ",
-            html: "<h3>OTP for account verification is </h3>" + "<h1 style='font-weight:bold;'>" + otp + "</h1>" // html body
-        };
-
-        transporter.sendMail(mailOptions, async (error, info) => {
-            if (error) {
-                return res.status(200).send({ sucess: false, message: error })
-            }
-            console.log(info);
-            const saveOTP = new UserOTPVerification({ email: email, otp: otp })
-            await saveOTP.save()
-
-            return res.status(200).send({ sucess: true, email: email, name: name, message: 'OTP Sent' })
-
-        });
-    }
+}
 
 
-    sendOTPforVerification(email)
-
-
-
-})
-
-router.post('/forgotPassword', async (req, res) => {
-
+exports.forgotPassword = async (req, res) => {
     const { email, password } = req.body
 
-    const userExist = await User.findOne({ email: email })
-    if (!userExist) {
+    if (!checkUserExists_DB(email)) {
         res.status(400).send({ sucess: false, message: 'User not found' })
         return
     }
@@ -169,43 +160,38 @@ router.post('/forgotPassword', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashpass = await bcrypt.hash(password, salt)
 
-    var newPassword = { $set: { password: hashpass } };
     var query = { 'email': email };
-    await User.updateOne(query, newPassword, { upsert: true })
+    var update = { $set: { password: hashpass } };
+    await updateUser_DB(query, update)
 
     return res.status(200).send({ sucess: true, email: email, message: 'Password Updated' })
 
-})
-
-//OTP stuffs
+}
 
 
-router.post('/verifyOtp', async (req, res) => {
-
+exports.verifyOtp = async (req, res) => {
     const { email, otp } = req.body;
-    const otpMatched = await UserOTPVerification.findOne({ otp: otp })
 
-    if (!otpMatched) {
+    if (!matchOTP_DB(otp)) {
         return res.status(200).send({ sucess: false, message: 'OTP Incorrect' })
     }
-    await UserOTPVerification.deleteOne({ otp: otp })
 
+    //After verified delete the otp from DB
+    await deleteOTP_DB(otp)
 
     var query = { 'email': email };
-    var newOTP = { $set: { verified: true } };
-    await User.updateOne(query, newOTP, { upsert: true })
+    var update = { $set: { verified: true } };
+    await updateUser_DB(query, update)
 
     return res.status(200).send({ sucess: true, email: email, message: 'OTP Verified' })
 
+}
 
-})
 
-
-router.post('/OTP_verfiedLogin', async (req, res) => {
-
+exports.OTP_verfiedLogin = async (req, res) => {
     const { email } = req.body;
 
-    const userID = await User.findOne({ email: email })
+    const userID = await checkUserExists_DB(email)
 
     const payload = {
         email: email,
@@ -216,20 +202,19 @@ router.post('/OTP_verfiedLogin', async (req, res) => {
     const accessToken = jwt.sign(payload, process.env.ACCESSTOKEN_SECRET_CODE, { expiresIn: accessTokenExpiry })
     const refreshToken = jwt.sign(payload, process.env.REFRESHTOKEN_SECRET_CODE, { expiresIn: '100d' })
 
-
     //Saving Refresh token into Mongodb database
-    var newRefreshtoken = { $set: { refreshToken: refreshToken } };
     var query = { 'email': email };
-    await RefreshTokenSchema.updateOne(query, newRefreshtoken, { upsert: true })
+    var update = { $set: { refreshToken: refreshToken } };
+    await update_refreshToken_DB(query, update)
 
 
     res.status(200).send({ sucess: true, accountType: "credentials", email: email, accessToken: "Bearer " + accessToken, refreshToken: refreshToken, message: 'Logged In' })
 
 
+}
 
-})
 
-router.post('/resendOTP', async (req, res) => {
+exports.resendOTP = async (req, res) => {
     const { email } = req.body
 
     const sendOTPforVerification = async (email) => {
@@ -260,80 +245,58 @@ router.post('/resendOTP', async (req, res) => {
             if (error) {
                 return res.status(200).send({ sucess: false, message: error })
             }
-            var newOTP = { $set: { otp: otp } };
-            var query = { 'email': email };
 
-
-            await UserOTPVerification.updateOne(query, newOTP, { upsert: true })
+            await updateOTP_DB(email, otp)
             return res.status(200).send({ sucess: true, message: 'OTP Sent Again!' })
 
         });
     }
 
     //User not found
-    const userExist = await User.findOne({ email: email })
+    const userExist = await checkUserExists_DB(email)
     if (!userExist) {
         return res.status(401).send({ sucess: false, message: 'User not found' })
     }
     await sendOTPforVerification(email)
 
 
-
-})
-
-
-
-//Facebook Auth
-
-router.get('/facebook', passport.authenticate('facebook', { scope: 'email' }));
-
-router.get('/auth/facebook/callback', passport.authenticate('facebook', {
-    successRedirect: "/user/login/success",
-    failureRedirect: "/user/login/failed",
-}), (req, res) => {
 }
-);
-
-
-//  Google Auth
-
-router.get('/google',
-    passport.authenticate('google', {
-        scope:
-            ['email', 'profile']
-    }
-    ));
-router.get("/auth/google/callback",
-    passport.authenticate("google", {
-        successRedirect: "/user/login/success",
-        failureRedirect: "/user/login/failed",
-    }), (req, res) => {
-
-    }
-);
 
 
 
 
-router.get("/login/success", async (req, res) => {
+exports.facebook = async (req, res) => {
+
+}
+exports.facebook_cb = async (req, res) => {
+
+}
+
+exports.google = async (req, res) => {
+
+}
+exports.google_cb = async (req, res) => {
+
+}
+
+
+//Facebook, Google, for both same route for success and failed and logout
+exports.login_success = async (req, res) => {
     if (req.user) {
 
         const { email, accountType } = req.user;
 
-        const userExist = await User.findOne({ email: email })
+        const userExist = await checkUserExists_DB(email)
         if (!userExist) {
             const salt = await bcrypt.genSalt(10);
             const hashpass = await bcrypt.hash("NOT SET", salt)
-            const user = new User({ name: req.user.displayName, email: email, password: hashpass, verified: true })
-            await user.save()
+
+            await saveUser_DB(req.user.displayName, email, hashpass, true)
         }
-
-
-        const userID = await User.findOne({ email: email })
 
         const payload = {
             email: email,
-            id: userID._id
+            id: userExist._id
         }
 
         //After logged in a token is generated, which have to be saved in the  cookie  in browser
@@ -341,14 +304,10 @@ router.get("/login/success", async (req, res) => {
         const refreshToken = jwt.sign(payload, process.env.REFRESHTOKEN_SECRET_CODE, { expiresIn: '100d' })
 
 
-
-
         //Saving Refresh token into Mongodb database
-        var newRefreshtoken = { $set: { refreshToken: refreshToken } };
         var query = { 'email': email };
-        await RefreshTokenSchema.updateOne(query, newRefreshtoken, { upsert: true })
-
-
+        var update = { $set: { refreshToken: refreshToken } };
+        await update_refreshToken_DB(query, update)
 
 
         res.cookie('email', email, { maxAge: 900000, httpOnly: false });
@@ -357,21 +316,24 @@ router.get("/login/success", async (req, res) => {
         res.redirect(CLIENT_URL)
 
     }
-});
+}
 
-router.get("/login/failed", (req, res) => {
+
+exports.login_failed = async (req, res) => {
     res.status(401).json({
         success: false,
         message: "Something went wrong!",
     });
-});
 
-router.get("/auth/logout", (req, res) => {
+}
+
+exports.auth_logout = async (req, res) => {
     req.logout();
     res.status(400).send({ sucess: true, message: 'Logged Out!' })
-});
+}
 
 
 
-module.exports = router
+
+
 
