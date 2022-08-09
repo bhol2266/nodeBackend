@@ -5,7 +5,6 @@ const RefreshTokenSchema = require('./../models/refreshTokensDB')
 
 exports.checkUserExists_DB = async function (email) {
     const userExist = await User.findOne({ email: email })
-    console.log(userExist);
     return userExist
 }
 

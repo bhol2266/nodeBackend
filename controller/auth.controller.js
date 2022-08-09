@@ -19,8 +19,8 @@ const { checkUserExists_DB, matchOTP_DB, saveOTP_DB, saveUser_DB, updateOTP_DB, 
 exports.register = async (req, res) => {
     const { name, email, password } = req.body
 
-    console.log(await checkUserExists_DB(email), 'NEXT');
-    if (checkUserExists_DB(email)) {
+
+    if (await checkUserExists_DB(email) !== null) {
         res.status(400).send({ sucess: false, message: 'Already Resgistered' })
         return
     }
@@ -153,7 +153,7 @@ exports.login = async (req, res) => {
 exports.forgotPassword = async (req, res) => {
     const { email, password } = req.body
 
-    if (!checkUserExists_DB(email)) {
+    if (await !checkUserExists_DB(email)) {
         res.status(400).send({ sucess: false, message: 'User not found' })
         return
     }
