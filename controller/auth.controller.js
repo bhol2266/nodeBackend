@@ -153,7 +153,8 @@ exports.login = async (req, res) => {
 exports.forgotPassword = async (req, res) => {
     const { email, password } = req.body
 
-    if (await !checkUserExists_DB(email)) {
+    
+    if (await checkUserExists_DB(email) === null) {
         res.status(400).send({ sucess: false, message: 'User not found' })
         return
     }
