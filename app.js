@@ -47,7 +47,7 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 require("./middlewares/passport_JWT");
-require("./middlewares/passport_AUTH");
+require("./middlewares/passport_auth");
 
 //----------------------------------------- END OF MIDDLEWARE---------------------------------------------------
 
