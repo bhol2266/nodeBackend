@@ -8,15 +8,13 @@ const app = express();
 
 const cors = require("cors");
 const passport = require("passport");
-const bcrypt = require("bcryptjs");
 const bodyParser = require("body-parser");
-const port = process.env.PORT || 5000;
 var express_Session = require('express-session')
 const jwt = require('jsonwebtoken');
 const RefreshTokenSchema = require('./models/refreshTokensDB')
 const accessTokenExpiry = '300s'
-const CLIENT_URL = 'http://localhost:3000/'
-const UserOTPVerification = require('./models/userOTPVerification')
+const port = process.env.PORT || 5000;
+
 //----------------------------------------- END OF IMPORTS---------------------------------------------------
 mongoose.connect(
     "mongodb+srv://bhola:IyNs48Pf1SNHUWpu@cluster0.acjho.mongodb.net/closm?retryWrites=true&w=majority",
